@@ -1,1 +1,1 @@
-# s4_digital_pathology
+# Structured state space models for multiple instance learning in digital pathology
