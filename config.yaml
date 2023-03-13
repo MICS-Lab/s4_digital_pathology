@@ -4,8 +4,9 @@ model:
   state_dim: 32
 data:
   data_path: .
-  labels_path: .
+  folds_path: .
   n_classes: 2
   input_dim: 1024
+  fold: 0
 training:
   optimizer: Adam

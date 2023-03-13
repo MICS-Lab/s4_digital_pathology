@@ -14,7 +14,17 @@ def read_config(config_path):
     """
     with open(config_path, 'r') as f:
         config = edict(yaml.safe_load(f))
-    
+
+    return config
+
+def check_config(config):
+    """
+        Check the config file (that may have been modified since reading).
+        args:
+            config [easydict.Easydict]: dictionary of the config
+        outputs:
+            None
+    """
     # check the model section
     assert hasattr(models, config.model.model_type), f'model.model_config ({config.model.model_type}) could not be found.'
     assert isinstance(config.model.model_dim, int), f'model.model_dim must be of type int, not {type(config.model.model_dim).__name__}.'
@@ -22,11 +32,11 @@ def read_config(config_path):
 
     # check the data section
     assert os.path.exists(config.data.data_path), f'data.data_path does not exist.'
-    assert os.path.exists(config.data.labels_path), f'data.labels_path does not exist.'
+    assert os.path.exists(config.data.folds_path), f'data.folds_path does not exist.'
     assert isinstance(config.data.n_classes, int), f'data.n_classes must be of type int, not {type(config.data.n_classes).__name__}.'
     assert isinstance(config.data.input_dim, int), f'data.input_dim must be of type int, not {type(config.data.input_dim).__name__}.'
+    assert isinstance(config.data.fold, int), f'data.fold must be of type int, not {type(config.data.fold).__name__}.'
+    assert 0 < config.data.fold < config.data.n_fold, f'config.data.fold msut be in [0, config.data.n_fold[.'
 
     # check the training section
     assert hasattr(torch.optim, config.training.optimizer), f'model.training.optimizer ({config.training.optimizer}) could not be found in torch.optim.'
-
-    return config
