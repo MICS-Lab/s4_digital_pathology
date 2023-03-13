@@ -5,6 +5,8 @@ import torch.nn
 import numpy as np
 import torch.optim
 from tqdm import tqdm
+from torch.optim import Optimizer
+from collections import defaultdict
 from easydict import EasyDict as edict
 from sklearn.metrics import accuracy_score, roc_auc_score
 
@@ -89,6 +91,8 @@ def train(config, model, device, train_dataloader, val_dataloader):
     format_epoch_width = 1+int(np.log10(config.training.max_epochs))
     criterion = getattr(torch.nn, config.training.loss)()
     optimizer = getattr(torch.optim, config.training.optimizer)(model.parameters(), lr=config.training.lr, weight_decay=config.training.wd)
+    if config.training.use_lookahead:
+        optimizer = Lookahead(optimizer)
     best_val_loss = np.inf
     patience = 0
 
@@ -142,8 +146,11 @@ def train(config, model, device, train_dataloader, val_dataloader):
         
         mean_val_loss = np.mean(val_loss)
         if mean_val_loss < best_val_loss:
+            if 'model_save_path' in locals():
+                os.unlink(model_save_path)
             model_save_path = os.path.join(config.training.save_path, f'loss_{mean_val_loss:.8f}.pt')
             print(f'New best validation loss ({best_val_loss:.4f} -> {mean_val_loss:.4f}). Saving model to {model_save_path}.')
+            torch.save(model.state_dict(), model_save_path)
             best_val_loss = mean_val_loss
             patience = 0
         else:
@@ -153,3 +160,86 @@ def train(config, model, device, train_dataloader, val_dataloader):
         if patience == config.training.patience:
             print(f'Patience limit was reached. Ending model training. Best model at {model_save_path}')
             break
+
+# The Lookahead class is taken from TransMIL's implementation of Lookahead https://github.com/szc19990412/TransMIL/blob/3f6bbe868ac39e7d861a111398b848ba3b943ca8/MyOptimizer/lookahead.py
+class Lookahead(Optimizer):
+    def __init__(self, base_optimizer, alpha=0.5, k=6):
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError(f'Invalid slow update rate: {alpha}')
+        if not 1 <= k:
+            raise ValueError(f'Invalid lookahead steps: {k}')
+        defaults = dict(lookahead_alpha=alpha, lookahead_k=k, lookahead_step=0)
+        self.base_optimizer = base_optimizer
+        self.param_groups = self.base_optimizer.param_groups
+        self.defaults = base_optimizer.defaults
+        self.defaults.update(defaults)
+        self.state = defaultdict(dict)
+        # manually add our defaults to the param groups
+        for name, default in defaults.items():
+            for group in self.param_groups:
+                group.setdefault(name, default)
+
+    def update_slow(self, group):
+        for fast_p in group["params"]:
+            if fast_p.grad is None:
+                continue
+            param_state = self.state[fast_p]
+            if 'slow_buffer' not in param_state:
+                param_state['slow_buffer'] = torch.empty_like(fast_p.data)
+                param_state['slow_buffer'].copy_(fast_p.data)
+            slow = param_state['slow_buffer']
+            slow.add_(fast_p.data - slow, alpha=group['lookahead_alpha'])
+            fast_p.data.copy_(slow)
+
+    def sync_lookahead(self):
+        for group in self.param_groups:
+            self.update_slow(group)
+
+    def step(self, closure=None):
+        #assert id(self.param_groups) == id(self.base_optimizer.param_groups)
+        loss = self.base_optimizer.step(closure)
+        for group in self.param_groups:
+            group['lookahead_step'] += 1
+            if group['lookahead_step'] % group['lookahead_k'] == 0:
+                self.update_slow(group)
+        return loss
+
+    def state_dict(self):
+        fast_state_dict = self.base_optimizer.state_dict()
+        slow_state = {
+            (id(k) if isinstance(k, torch.Tensor) else k): v
+            for k, v in self.state.items()
+        }
+        fast_state = fast_state_dict['state']
+        param_groups = fast_state_dict['param_groups']
+        return {
+            'state': fast_state,
+            'slow_state': slow_state,
+            'param_groups': param_groups,
+        }
+
+    def load_state_dict(self, state_dict):
+        fast_state_dict = {
+            'state': state_dict['state'],
+            'param_groups': state_dict['param_groups'],
+        }
+        self.base_optimizer.load_state_dict(fast_state_dict)
+
+        # We want to restore the slow state, but share param_groups reference
+        # with base_optimizer. This is a bit redundant but least code
+        slow_state_new = False
+        if 'slow_state' not in state_dict:
+            print('Loading state_dict from optimizer without Lookahead applied.')
+            state_dict['slow_state'] = defaultdict(dict)
+            slow_state_new = True
+        slow_state_dict = {
+            'state': state_dict['slow_state'],
+            'param_groups': state_dict['param_groups'],  # this is pointless but saves code
+        }
+        super(Lookahead, self).load_state_dict(slow_state_dict)
+        self.param_groups = self.base_optimizer.param_groups  # make both ref same container
+        if slow_state_new:
+            # reapply defaults to catch missing lookahead specific ones
+            for name, default in self.defaults.items():
+                for group in self.param_groups:
+                    group.setdefault(name, default)
