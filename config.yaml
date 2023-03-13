@@ -1,3 +1,4 @@
+seed: 0
 model:
   model_type: S4Model
   model_dim: 512
@@ -8,5 +9,12 @@ data:
   n_classes: 2
   input_dim: 1024
   fold: 0
+  batch_size: 1
 training:
   optimizer: Adam
+  lr: 0.0002
+  wd: 0.00001
+  patience: 10
+  max_epochs: 200
+  loss: CrossEntropyLoss
+  save_path: outputs/camelyon16
