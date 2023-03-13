@@ -36,7 +36,7 @@ def check_config(config):
     assert isinstance(config.data.n_classes, int), f'data.n_classes must be of type int, not {type(config.data.n_classes).__name__}.'
     assert isinstance(config.data.input_dim, int), f'data.input_dim must be of type int, not {type(config.data.input_dim).__name__}.'
     assert isinstance(config.data.fold, int), f'data.fold must be of type int, not {type(config.data.fold).__name__}.'
-    assert 0 < config.data.fold < config.data.n_fold, f'config.data.fold msut be in [0, config.data.n_fold[.'
+    assert config.data.fold >= 0, f'config.data.fold must be positive.'
 
     # check the training section
     assert hasattr(torch.optim, config.training.optimizer), f'model.training.optimizer ({config.training.optimizer}) could not be found in torch.optim.'

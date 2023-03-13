@@ -3,8 +3,8 @@ model:
   model_dim: 512
   state_dim: 32
 data:
-  data_path: .
-  folds_path: .
+  data_path: data/camelyon16
+  folds_path: folds/camelyon16
   n_classes: 2
   input_dim: 1024
   fold: 0
