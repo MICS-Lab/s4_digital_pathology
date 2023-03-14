@@ -6,10 +6,10 @@ import argparse
 from s4dataset import S4Dataset
 from torch.utils.data import DataLoader
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', required=True, type=str, help='Path to the .yaml config file.')
-parser.add_argument('--fold', required=False, type=int, default=None, help='Fold on which to launch training.')
+parser.add_argument('--model_path', required=False, type=str, default=None, help='Path to the .pt file of the trained model (default is the one with the lowest loss).')
+parser.add_argument('--fold', required=False, type=int, default=None, help='Fold on which to launch the evaluation of the model.')
 args = parser.parse_args()
 
 # read the config file and update if needed
@@ -22,13 +22,11 @@ torch.manual_seed(config.seed)
 
 # create the model (note the S4Model is not yet compatible with MPS)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-print(f'Training on {str(device)}.')
+print(f'Evaluating on {str(device)}.')
 model = getattr(models, config.model.model_type)(config).to(device)
 
 # create the datasets and dataloaders
-train_dataset = S4Dataset(config, 'train')
-val_dataset = S4Dataset(config, 'val')
-train_dataloader = DataLoader(train_dataset, batch_size=config.data.batch_size, shuffle=True)
-val_dataloader = DataLoader(val_dataset, batch_size=config.data.batch_size, shuffle=False)
+test_dataset = S4Dataset(config, 'test')
+test_dataloader = DataLoader(test_dataset, batch_size=config.data.batch_size, shuffle=False)
 
-utils.train(config, model, device, train_dataloader, val_dataloader)
+utils.eval(config, model, device, test_dataloader, args.model_path)

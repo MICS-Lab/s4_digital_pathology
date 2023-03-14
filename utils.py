@@ -105,7 +105,7 @@ def train(config, model, device, train_dataloader, val_dataloader):
         for train_data, train_label in training_progress:
             optimizer.zero_grad()
             train_pred = model(train_data.to(device))
-            loss = criterion(train_pred['Y_prob'], train_label)
+            loss = criterion(train_pred['Y_prob'], train_label.to(device))
             loss.backward()
             optimizer.step()
 
@@ -130,13 +130,13 @@ def train(config, model, device, train_dataloader, val_dataloader):
         for val_data, val_label in val_progress:
             with torch.no_grad():
                val_pred = model(val_data.to(device))
-            loss = criterion(val_pred['Y_prob'], val_label)
+            loss = criterion(val_pred['Y_prob'], val_label.to(device))
 
             val_labels.append(val_label)
-            val_y_probs.append(val_pred['Y_prob'])
-            val_y_hats.append(val_pred['Y_hat'])
+            val_y_probs.append(val_pred['Y_prob'].cpu())
+            val_y_hats.append(val_pred['Y_hat'].cpu())
 
-            val_loss.append([loss.tolist()] * len(val_data))
+            val_loss.append([loss.detach().cpu().tolist()] * len(val_data))
             val_progress.set_description(f'Valid [{str(epoch+1).zfill(format_epoch_width)}/{config.training.max_epochs}] | Loss {np.mean(val_loss):.4f} | Accuracy ...... | AUC ......')
 
             if len(val_labels) == len(val_progress):
@@ -148,7 +148,7 @@ def train(config, model, device, train_dataloader, val_dataloader):
         if mean_val_loss < best_val_loss:
             if 'model_save_path' in locals():
                 os.unlink(model_save_path)
-            model_save_path = os.path.join(config.training.save_path, f'loss_{mean_val_loss:.8f}.pt')
+            model_save_path = os.path.join(config.training.save_path, f'fold_{config.data.fold}_loss_{mean_val_loss:.8f}.pt')
             print(f'New best validation loss ({best_val_loss:.4f} -> {mean_val_loss:.4f}). Saving model to {model_save_path}.')
             torch.save(model.state_dict(), model_save_path)
             best_val_loss = mean_val_loss
@@ -160,6 +160,48 @@ def train(config, model, device, train_dataloader, val_dataloader):
         if patience == config.training.patience:
             print(f'Patience limit was reached. Ending model training. Best model at {model_save_path}')
             break
+
+def eval(config, model, device, test_dataloader, model_path):
+    """
+        Train a given model on a single fold.
+        args:
+            config [easydict.Easydict]: dictionary of the config
+            model [torch.nn.Module]: model to evaluate
+            device [torch.device]: device on which to run the model
+            test_dataloader [torch.utils.data.dataloader.DataLoader]: test dataloader
+            model_path [str]: path to the model (if None, then the model with the smallest loss is chosen)
+        returns:
+            None
+    """
+    if model_path is None:
+        possible_paths = [path for path in os.listdir(config.training.save_path) if f'fold_{config.data.fold}' in path]
+        possible_losses = [float(os.path.splitext(path.split('_')[-1])[0]) for path in possible_paths]
+        assert len(possible_losses) > 0, f'No trained model could be found at {config.training.save_path}.'
+        model_path = os.path.join(config.training.save_path, possible_paths[np.argmin(possible_losses)])
+    assert os.path.exists(model_path), f'The model path ({model_path}) does not exist.'
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    print(f'Loading model from {model_path}.')
+
+    test_progress = tqdm(test_dataloader)
+    test_labels, test_y_probs, test_y_hats = [], [], []
+    for test_data, test_label in test_progress:
+        with torch.no_grad():
+            test_pred = model(test_data.to(device))
+        test_labels.append(test_label)
+        test_y_probs.append(test_pred['Y_prob'].cpu())
+        test_y_hats.append(test_pred['Y_hat'].cpu())
+    
+    test_labels, test_y_probs, test_y_hats = torch.cat(test_labels), torch.vstack(test_y_probs), torch.cat(test_y_hats)
+    test_accuracy, test_auc = get_epoch_metrics(config.data.n_classes, test_labels, test_y_probs, test_y_hats)
+    print(f'Fold {config.data.fold} test accuracy: {test_accuracy:.8f}.')
+    print(f'Fold {config.data.fold} test AUC: {test_auc:.8f}.')
+    print(f'Fold {config.data.fold} confusion matrix:')
+    for label in np.unique(test_labels):
+        print(f'\tFor label {int(label)}')
+        for pred in np.unique(test_labels):
+            pred_count = int(sum(test_y_hats[np.where(test_labels == label)] == pred))
+            print(f'\t\tPredicted {int(pred)}: {pred_count}')
 
 # The Lookahead class is taken from TransMIL's implementation of Lookahead https://github.com/szc19990412/TransMIL/blob/3f6bbe868ac39e7d861a111398b848ba3b943ca8/MyOptimizer/lookahead.py
 class Lookahead(Optimizer):
