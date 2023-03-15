@@ -1,0 +1,11 @@
+,train,train_label,val,val_label,test,test_label
+0,normal_002,0,normal_046,0.0,test_001,1.0
+1,normal_059,0,tumor_022,1.0,test_003,0.0
+2,tumor_035,1,normal_126,0.0,,
+3,normal_087,0,tumor_023,1.0,,
+4,normal_054,0,,,,
+5,tumor_099,1,,,,
+6,tumor_088,1,,,,
+7,tumor_087,1,,,,
+8,normal_043,0,,,,
+9,tumor_013,1,,,,
