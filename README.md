@@ -1,5 +1,7 @@
 # Structured state space models for multiple instance learning in digital pathology
 
+Implementation for [Structured State Space Models for Multiple Instance Learning in Digital Pathology](https://arxiv.org/abs/2306.15789), MICCAI 2023.
+
 ## Getting started
 The correct conda environment can be setup using the `environment.yaml` file.
 ```bash
@@ -54,3 +56,15 @@ python eval.py --config <path to the config.yaml file> --fold <fold number> --mo
 The code for the S4D module (`models/s4.py`) was taken from the [original S4 repository](https://github.com/HazyResearch/state-spaces).
 
 The code for the lookahead optimizer (`Lookahead` class in `utils.py`) was taken from [TransMIL's repository](https://github.com/szc19990412/TransMIL/blob/3f6bbe868ac39e7d861a111398b848ba3b943ca8/MyOptimizer/lookahead.py).
+
+## Citing
+```
+@misc{fillioux2023structured,
+      title={Structured State Space Models for Multiple Instance Learning in Digital Pathology}, 
+      author={Leo Fillioux and Joseph Boyd and Maria Vakalopoulou and Paul-Henry Cournède and Stergios Christodoulidis},
+      year={2023},
+      eprint={2306.15789},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
+```
